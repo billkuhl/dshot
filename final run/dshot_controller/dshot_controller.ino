@@ -2,14 +2,10 @@
 // pressing Ctrl+U in the Arduino window. No guarantees expressed or implied. Dedicated
 // to the public domain.
 
-
+#include <stdlib.h>
 
 #define pinNum 1
 #define PROTOCOL 150
-
-void setup() {
-  pinMode(pinNum, OUTPUT);
-}
 
 #define NOP1 "nop\n\t"
 #define NOP5 "nop\n\t""nop\n\t""nop\n\t""nop\n\t""nop\n\t"
@@ -86,9 +82,10 @@ void crc2bin (int num,int* si ) {
   //reverse it
   
   for (int j = 0; j<4; j++){
+    
       si[12+j] = rev[3-j];
+      
   }
-  
   
 }
 
@@ -106,30 +103,72 @@ void off(){
   OFF_LOW;
 }
 
-void loop() {
+void ns2dshot(int signal_ns, int telemetry){
 
-  int input_signal = 0;
+  //int telemetry = 1;
+  
+    int final_sig[16];
+    int2bin(signal_ns,final_sig);
+    final_sig[11] = telemetry; //Telemetry Request
+    signal_ns = (signal_ns<<1)+telemetry;
+    int crc = ((signal_ns ^ (signal_ns >> 4) ^ (signal_ns >> 8))) & 0x0F;
+    //int crc_bi[4];
+    crc2bin(crc,final_sig);
 
-  int final_sig[16];
-  int2bin(2047,final_sig);
-  final_sig[11] = 0; //Telemetry Request
-  int crc = (~(input_signal ^ (input_signal >> 4) ^ (input_signal >> 8))) & 0x0F;
-  //int crc_bi[4];
-  crc2bin(crc,final_sig);
-  
-  
-  
-  
-  
-  noInterrupts();
-  for (int i = 0; i<16; i++) {
-    if (final_sig[i] == 1) on();
-    else if (final_sig[i] == 0) off();
+    if (telemetry == 0) {
+    noInterrupts();
+    
+    for (int i = 0; i<16; i++) {
+      if (final_sig[i] == 1) on();
+      else if (final_sig[i] == 0) off();
+    }
+    
+    delayMicroseconds(13.28);
+    interrupts();
+  } else if (telemetry = 1) {
+
+    //Need it to be inverted to check the signal.
+
+    noInterrupts();
+    
+    for (int i = 0; i<16; i++) {
+      if (final_sig[i] == 0) on();
+      else if (final_sig[i] == 1) off();
+    }
+    
+    delayMicroseconds(13.28);
+    interrupts();
+    
   }
-  delayMicroseconds(106.72);
-  interrupts();
-//  noInterrupts();
-//  on();
-//  off();
-//  interrupts();
+  
+}
+
+
+
+void setup() {
+  pinMode(pinNum, OUTPUT);
+
+  delay(9000);
+
+  int i = 0;
+  
+  while (i<200000) {
+  int input_signal = 0;
+  int telemetry = 0;
+
+  ns2dshot(input_signal,telemetry);
+  i++;
+  
+  }
+  
+  //delay(3000);
+  
+}
+
+void loop() {
+  
+  int input_signal = 1046;
+  int telemetry = 1;
+  ns2dshot(input_signal, telemetry);
+  
 }
