@@ -1,11 +1,16 @@
-// Empirically determined by Ed Suominen with an oscilloscope and a good deal of
-// pressing Ctrl+U in the Arduino window. No guarantees expressed or implied. Dedicated
-// to the public domain.
+// Written by Bill Kuhl with guidance from Parker Lusk for the MIT Aerospace Controls Lab
+//
+// Works with teensy 4.0
+// 28 May 2021
 
 #include <stdlib.h>
+#include <math.h>
+#include <TimeLib.h>
+int input_signal = 104;
 
 #define pinNum 1
 #define PROTOCOL 150
+int k = 1;
 
 #define NOP1 "nop\n\t"
 #define NOP5 "nop\n\t""nop\n\t""nop\n\t""nop\n\t""nop\n\t"
@@ -90,85 +95,144 @@ void crc2bin (int num,int* si ) {
 }
 
 void on(){
+  
   digitalWriteFast(pinNum, HIGH); // 1
   ON_HIGH;
   digitalWriteFast(pinNum, LOW);
   ON_LOW;
+  
 } 
 
 void off(){
+  
   digitalWriteFast(pinNum, HIGH); // 1
   OFF_HIGH;
   digitalWriteFast(pinNum, LOW);
   OFF_LOW;
+  
+}
+
+void inv_on(){
+  
+  digitalWriteFast(pinNum,LOW);
+  ON_HIGH;
+  digitalWriteFast(pinNum,HIGH);
+  ON_LOW;
+  
+}
+
+void inv_off(){
+
+  digitalWriteFast(pinNum, LOW);
+  OFF_HIGH;
+  digitalWriteFast(pinNum, HIGH);
+  OFF_LOW;
+  
 }
 
 void ns2dshot(int signal_ns, int telemetry){
 
-  //int telemetry = 1;
-  
+    int signal_ds = 2*(signal_ns - 1000) + 47;
+
     int final_sig[16];
-    int2bin(signal_ns,final_sig);
+    int2bin(signal_ds,final_sig);
     final_sig[11] = telemetry; //Telemetry Request
-    signal_ns = (signal_ns<<1)+telemetry;
-    int crc = ((signal_ns ^ (signal_ns >> 4) ^ (signal_ns >> 8))) & 0x0F;
-    //int crc_bi[4];
+    signal_ds = (signal_ds<<1)+telemetry;
+    int crc = ((signal_ds ^ (signal_ds >> 4) ^ (signal_ds >> 8))) & 0x0F;
+   
     crc2bin(crc,final_sig);
 
-    if (telemetry == 0) {
+    
     noInterrupts();
     
     for (int i = 0; i<16; i++) {
       if (final_sig[i] == 1) on();
       else if (final_sig[i] == 0) off();
     }
-    
+    digitalWriteFast(pinNum,HIGH);
     delayMicroseconds(13.28);
     interrupts();
-  } else if (telemetry = 1) {
-
-    //Need it to be inverted to check the signal.
-
-    noInterrupts();
     
-    for (int i = 0; i<16; i++) {
-      if (final_sig[i] == 0) on();
-      else if (final_sig[i] == 1) off();
-    }
     
     delayMicroseconds(13.28);
     interrupts();
     
-  }
+  
   
 }
 
+void ns2dshot_inv(int signal_ns, int telemetry){
+
+  
+    int signal_ds = 2*(signal_ns - 1000) + 47;
+
+    int final_sig[16];
+    int2bin(signal_ds,final_sig);
+    final_sig[11] = telemetry; //Telemetry Request
+    signal_ds = (signal_ds<<1)+telemetry;
+    int crc = ((signal_ds ^ (signal_ds >> 4) ^ (signal_ds >> 8))) & 0x0F;
+   
+    crc2bin(crc,final_sig);
+
+    
+      noInterrupts();
+      
+      for (int i = 0; i<16; i++) {
+        if (final_sig[i] == 1) inv_on();
+        else if (final_sig[i] == 0) inv_off();
+      }
+      digitalWriteFast(pinNum,HIGH);
+      
+      delayMicroseconds(13.28);
+      interrupts();
+  
+}
 
 
 void setup() {
   pinMode(pinNum, OUTPUT);
-
-  delay(9000);
-
-  int i = 0;
   
-  while (i<200000) {
-  int input_signal = 0;
-  int telemetry = 0;
-
-  ns2dshot(input_signal,telemetry);
-  i++;
+  Serial.begin(115200);
+  Serial2.begin(115200);
   
-  }
   
-  //delay(3000);
   
 }
 
 void loop() {
-  
-  int input_signal = 1046;
-  int telemetry = 1;
+
+  if (Serial.available()){
+    char new_input[4];
+    int n = 0;
+    while (Serial.available()){
+      new_input[n] = Serial.read();
+      n++;
+    }
+    //Serial.println((atoi(new_input)));
+    input_signal = atoi(new_input);
+  }
+  int telemetry, t;
+  if (k%500 == 0) {
+    telemetry = 1;
+    t = micros();
+  }
+  else telemetry = 0;
+
   ns2dshot(input_signal, telemetry);
+
   
+  if (Serial2.available() && micros() - t <= 900){
+    char tele_data[30];
+    int n = 0;
+    Serial.println("Entering into Service");
+    while (Serial2.available()){
+      Serial.println(Serial2.read());
+      Serial.println(n);
+      n++;
+    }
+    Serial.println("Getting Telemetry Data\n");
+    
+  }
+  
+  k++;
 }
